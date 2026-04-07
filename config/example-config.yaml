@@ -18,16 +18,16 @@ runtime:
   api_key: null
   default_enable_thinking: false
   # Default response-generation cap passed to vmlx serve.
-  # This is not the same thing as a model's context window.
-  max_tokens: 32768
+  # In practice we recommend matching this to the current model's text limit.
+  max_tokens: 262144
   max_num_seqs: 256
-  continuous_batching: false
+  continuous_batching: true
   enable_prefix_cache: true
   cache_memory_percent: 0.30
   use_paged_cache: false
   paged_cache_block_size: 64
   max_cache_blocks: 1000
-  kv_cache_quantization: none
+  kv_cache_quantization: q4
   kv_cache_group_size: 64
   stream_from_disk: false
   stream_memory_percent: 90

@@ -65,14 +65,32 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runtime-metadata")
     async def runtime_metadata() -> dict[str, object]:
+        runtime: RuntimeManager = app.state.runtime
+        model_index: ModelIndex = app.state.model_index
+        config: AppConfig = app.state.config
+        loaded_context = (
+            runtime._loaded_model.text_context_tokens
+            if runtime._loaded_model and runtime._loaded_model.text_context_tokens
+            else None
+        )
+        discovered_contexts = [
+            item.text_context_tokens
+            for item in model_index.list()
+            if isinstance(item.text_context_tokens, int)
+        ]
+        discovered_max_context = max(discovered_contexts, default=262144)
+        recommended_max_tokens = loaded_context or discovered_max_context or config.runtime.max_tokens
         return {
             "fields": {
                 "max_tokens": {
-                    "label": "Default response max tokens",
+                    "label": "Default generation cap",
                     "min": 1,
-                    "max": 262144,
-                    "default": 32768,
-                    "note": "Generation cap passed to vmlx serve. This is not the model context window.",
+                    "max": loaded_context or discovered_max_context,
+                    "default": recommended_max_tokens,
+                    "recommended": recommended_max_tokens,
+                    "loaded_context": loaded_context,
+                    "discovered_max_context": discovered_max_context,
+                    "note": "vmlx serve uses this as the default per-request generation cap. We clamp the control to the current model's text limit when known.",
                 },
                 "max_num_seqs": {
                     "label": "Maximum concurrent sequences",
@@ -105,7 +123,7 @@ def create_app() -> FastAPI:
                 "kv_cache_quantization": {
                     "label": "KV cache quantization",
                     "choices": ["none", "q4", "q8"],
-                    "default": "none",
+                    "default": "q4",
                     "note": "Requires continuous batching. q4/q8 compress the cached KV state, not the base model weights.",
                 },
                 "kv_cache_group_size": {

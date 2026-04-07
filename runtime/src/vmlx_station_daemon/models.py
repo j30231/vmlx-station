@@ -48,15 +48,15 @@ class RuntimeConfig(BaseModel):
     vmlx_bin: str = "/Users/jaesik/.venvs/vmlx/bin/vmlx"
     api_key: Optional[str] = None
     default_enable_thinking: bool = False
-    max_tokens: int = Field(default=32768, ge=1, le=262144)
+    max_tokens: int = Field(default=262144, ge=1, le=262144)
     max_num_seqs: int = Field(default=256, ge=1, le=4096)
-    continuous_batching: bool = False
+    continuous_batching: bool = True
     enable_prefix_cache: bool = True
     cache_memory_percent: float = Field(default=0.30, gt=0.0, le=0.95)
     use_paged_cache: bool = False
     paged_cache_block_size: int = Field(default=64, ge=1, le=4096)
     max_cache_blocks: int = Field(default=1000, ge=1, le=1_000_000)
-    kv_cache_quantization: Literal["none", "q4", "q8"] = "none"
+    kv_cache_quantization: Literal["none", "q4", "q8"] = "q4"
     kv_cache_group_size: int = Field(default=64, ge=1, le=4096)
     stream_from_disk: bool = False
     stream_memory_percent: int = Field(default=90, ge=1, le=99)

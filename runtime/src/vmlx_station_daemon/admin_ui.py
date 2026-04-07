@@ -182,6 +182,25 @@ def render_admin_ui() -> str:
       font-size: 12px;
       color: var(--muted);
     }
+    .range-row {
+      display: grid;
+      gap: 8px;
+    }
+    .range-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    input[type="range"] {
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
     .notice {
       margin-top: 10px;
       font-size: 13px;
@@ -246,8 +265,15 @@ def render_admin_ui() -> str:
           <label class="span-2">vmlx Binary
             <input id="vmlx-bin" type="text">
           </label>
-          <label>Max Tokens
-            <input id="cfg-max-tokens" type="number" min="1" max="262144">
+          <label class="span-2">Max Tokens
+            <div class="range-row">
+              <input id="cfg-max-tokens-range" type="range" min="1" max="262144" step="256">
+              <div class="range-meta">
+                <span id="cfg-max-tokens-range-label">Range: 1 - 262,144</span>
+                <button class="secondary" id="cfg-max-tokens-use-recommended" type="button">Use Recommended</button>
+              </div>
+              <input id="cfg-max-tokens" type="number" min="1" max="262144">
+            </div>
           </label>
           <label>Max Concurrent Seqs
             <input id="cfg-max-num-seqs" type="number" min="1" max="4096">
@@ -322,6 +348,21 @@ def render_admin_ui() -> str:
 
   <script>
     const state = { status: null, models: [], config: null, runtimeMetadata: null };
+
+    function stepForTokenRange(limit) {
+      if (limit <= 8192) return 64;
+      if (limit <= 32768) return 256;
+      if (limit <= 131072) return 512;
+      return 1024;
+    }
+
+    function normalizeTokenValue(value, minValue, maxValue, fallbackValue) {
+      let next = Number(value);
+      if (!Number.isFinite(next)) next = fallbackValue;
+      if (!Number.isFinite(next)) next = minValue;
+      next = Math.max(minValue, Math.min(maxValue, next));
+      return Math.round(next);
+    }
 
     function formatNumber(value) {
       if (value === null || value === undefined || value === "") return "Unknown";
@@ -422,18 +463,28 @@ def render_admin_ui() -> str:
       const status = state.status;
       const loadedContext = status?.loaded_model_text_context_tokens || null;
       const maxTokensInput = document.getElementById("cfg-max-tokens");
+      const maxTokensRange = document.getElementById("cfg-max-tokens-range");
+      const maxTokensRangeLabel = document.getElementById("cfg-max-tokens-range-label");
       const chatMaxTokensInput = document.getElementById("chat-max-tokens");
-      const maxTokensMeta = metadata?.fields?.max_tokens || { min: 1, max: 262144, default: 32768 };
-      maxTokensInput.min = maxTokensMeta.min ?? 1;
-      maxTokensInput.max = maxTokensMeta.max ?? 262144;
+      const maxTokensMeta = metadata?.fields?.max_tokens || { min: 1, max: 262144, default: 262144, recommended: 262144 };
+      const minTokens = maxTokensMeta.min ?? 1;
+      const maxTokensCap = loadedContext || maxTokensMeta.max || 262144;
+      const recommendedTokens = maxTokensMeta.recommended || loadedContext || maxTokensMeta.default || maxTokensCap;
+      const rangeStep = stepForTokenRange(maxTokensCap);
+      maxTokensInput.min = minTokens;
+      maxTokensInput.max = maxTokensCap;
+      maxTokensRange.min = minTokens;
+      maxTokensRange.max = maxTokensCap;
+      maxTokensRange.step = rangeStep;
+      maxTokensRangeLabel.textContent = `Recommended ${formatNumber(recommendedTokens)} · Range ${formatNumber(minTokens)} - ${formatNumber(maxTokensCap)}`;
       chatMaxTokensInput.min = 1;
-      chatMaxTokensInput.max = loadedContext || maxTokensMeta.max || 262144;
+      chatMaxTokensInput.max = maxTokensCap;
 
       const rules = [
-        maxTokensMeta.note || "max_tokens is a generation cap, not the model context window.",
+        maxTokensMeta.note || "max_tokens is the vmlx serve generation cap.",
       ];
       if (loadedContext) {
-        rules.push(`Loaded model context window: ${formatNumber(loadedContext)} text tokens.`);
+        rules.push(`Loaded model text limit: ${formatNumber(loadedContext)} tokens.`);
       }
       if (status?.warnings?.length) {
         rules.push(...status.warnings);
@@ -444,18 +495,38 @@ def render_admin_ui() -> str:
       document.getElementById("runtime-rules").textContent = rules.join("\\n");
 
       const chatHint = loadedContext
-        ? `Loaded model text context: ${formatNumber(loadedContext)}. The chat-test max tokens field is a response cap, not the full context budget.`
+        ? `Loaded model text limit: ${formatNumber(loadedContext)}. The chat-test max tokens field is a per-request response cap.`
         : "This uses the currently loaded runtime on /v1/chat/completions.";
       document.getElementById("chat-hint").textContent = chatHint;
 
       const contextHint = loadedContext
-        ? `Current loaded model supports up to ${formatNumber(loadedContext)} text tokens. vMLX does not expose a separate --context-length flag in this build, so we surface safe load/runtime knobs instead.`
-        : "Current vMLX build does not expose a separate explicit max context length load flag in vmlx serve --help.";
+        ? `Current loaded model supports up to ${formatNumber(loadedContext)} text tokens. We use that limit to bound the runtime max-tokens slider.`
+        : "The max-tokens slider is bounded by the currently loaded model when that metadata is available.";
       document.getElementById("runtime-context-hint").textContent = contextHint;
       const openWebUIButton = document.getElementById("open-webui-btn");
       const openWebUIURL = status?.open_webui_url;
       openWebUIButton.disabled = !openWebUIURL;
       openWebUIButton.textContent = status?.open_webui_running ? "Open WebUI" : "Open WebUI (start if needed)";
+    }
+
+    function syncMaxTokensControls(source = "number") {
+      const metadata = state.runtimeMetadata;
+      const status = state.status;
+      const maxTokensMeta = metadata?.fields?.max_tokens || { min: 1, max: 262144, default: 262144, recommended: 262144 };
+      const minTokens = maxTokensMeta.min ?? 1;
+      const maxTokensCap = status?.loaded_model_text_context_tokens || maxTokensMeta.max || 262144;
+      const recommendedTokens = maxTokensMeta.recommended || status?.loaded_model_text_context_tokens || maxTokensMeta.default || maxTokensCap;
+      const legacyDefault = 32768;
+      const maxTokensInput = document.getElementById("cfg-max-tokens");
+      const maxTokensRange = document.getElementById("cfg-max-tokens-range");
+      const sourceValue = source === "range" ? maxTokensRange.value : maxTokensInput.value;
+      const currentValue = Number(maxTokensInput.value);
+      const fallbackValue = (currentValue === legacyDefault && recommendedTokens > legacyDefault)
+        ? recommendedTokens
+        : recommendedTokens;
+      const nextValue = normalizeTokenValue(sourceValue, minTokens, maxTokensCap, fallbackValue);
+      maxTokensInput.value = String(nextValue);
+      maxTokensRange.value = String(nextValue);
     }
 
     function normalizeRuntimeForm() {
@@ -521,7 +592,14 @@ def render_admin_ui() -> str:
       document.getElementById("model-roots").value = (config.model_roots || []).join("\\n");
       document.getElementById("vmlx-bin").value = config.runtime.vmlx_bin || "";
       document.getElementById("cfg-thinking").checked = !!config.runtime.default_enable_thinking;
-      document.getElementById("cfg-max-tokens").value = config.runtime.max_tokens ?? 32768;
+      const loadedContext = state.status?.loaded_model_text_context_tokens || null;
+      const configuredMaxTokens = Number(config.runtime.max_tokens ?? 262144);
+      const legacyDefault = 32768;
+      const initialMaxTokens = (configuredMaxTokens === legacyDefault && loadedContext && loadedContext > legacyDefault)
+        ? loadedContext
+        : configuredMaxTokens;
+      document.getElementById("cfg-max-tokens").value = initialMaxTokens;
+      document.getElementById("cfg-max-tokens-range").value = initialMaxTokens;
       document.getElementById("cfg-max-num-seqs").value = config.runtime.max_num_seqs ?? 256;
       document.getElementById("cfg-continuous-batching").checked = !!config.runtime.continuous_batching;
       document.getElementById("cfg-prefix-cache").checked = !!config.runtime.enable_prefix_cache;
@@ -546,6 +624,7 @@ def render_admin_ui() -> str:
       setSelectOptions("day-model", day.model_id);
       setSelectOptions("night-model", night.model_id);
       renderRuntimeHints();
+      syncMaxTokensControls("number");
     }
 
     async function refreshAll() {
@@ -667,6 +746,21 @@ def render_admin_ui() -> str:
     document.getElementById("cfg-kv-cache-quantization").addEventListener("change", () => {
       const adjusted = normalizeRuntimeForm();
       if (adjusted.length) notice(adjusted.join(" "), false);
+    });
+    document.getElementById("cfg-max-tokens-range").addEventListener("input", () => {
+      syncMaxTokensControls("range");
+    });
+    document.getElementById("cfg-max-tokens").addEventListener("input", () => {
+      syncMaxTokensControls("number");
+    });
+    document.getElementById("cfg-max-tokens-use-recommended").addEventListener("click", () => {
+      const recommended = state.runtimeMetadata?.fields?.max_tokens?.recommended
+        || state.status?.loaded_model_text_context_tokens
+        || 262144;
+      document.getElementById("cfg-max-tokens").value = recommended;
+      document.getElementById("cfg-max-tokens-range").value = recommended;
+      syncMaxTokensControls("number");
+      notice(`Set max tokens to recommended value ${formatNumber(recommended)}.`, false);
     });
     document.getElementById("cfg-paged-cache").addEventListener("change", () => {
       const adjusted = normalizeRuntimeForm();
