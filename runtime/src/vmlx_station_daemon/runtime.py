@@ -122,6 +122,16 @@ class RuntimeManager:
                 warnings.append(
                     "Configured max_tokens is higher than the loaded model's text context window."
                 )
+        open_webui_url = None
+        open_webui_running = False
+        if self.config.open_webui.enabled:
+            open_webui_url = (
+                f"http://{self.config.open_webui.host}:{self.config.open_webui.port}"
+            )
+            open_webui_running = self._port_open(
+                self.config.open_webui.host,
+                self.config.open_webui.port,
+            )
         return RuntimeStatus(
             running=runtime_pid is not None,
             loaded_model_id=loaded_model_id,
@@ -137,6 +147,8 @@ class RuntimeManager:
             runtime_port=self.config.runtime.port,
             openai_base_url=f"http://{self.config.runtime.host}:{self.config.runtime.port}/v1",
             control_base_url=f"http://{self.config.control_api.host}:{self.config.control_api.port}",
+            open_webui_url=open_webui_url,
+            open_webui_running=open_webui_running,
             schedule_enabled=self.config.schedule.enabled,
             active_schedule_rule=schedule_rule,
             warnings=warnings,

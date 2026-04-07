@@ -13,11 +13,13 @@ final class StatusMenuController: NSObject {
     private let servedItem = NSMenuItem(title: "Served as: unknown", action: nil, keyEquivalent: "")
     private let runtimeItem = NSMenuItem(title: "Runtime: unknown", action: nil, keyEquivalent: "")
     private let scheduleItem = NSMenuItem(title: "Schedule: unknown", action: nil, keyEquivalent: "")
+    private let webUIItem = NSMenuItem(title: "Open WebUI: unknown", action: nil, keyEquivalent: "")
     private let modelsHeaderItem = NSMenuItem(title: "Models", action: nil, keyEquivalent: "")
     private let unloadItem = NSMenuItem(title: "Unload Current Model", action: #selector(unloadCurrentModel), keyEquivalent: "")
     private let rescanItem = NSMenuItem(title: "Rescan Models", action: #selector(rescanModels), keyEquivalent: "")
     private let openAPIItem = NSMenuItem(title: "Open Model API in Browser", action: #selector(openModelAPI), keyEquivalent: "")
     private let openControlItem = NSMenuItem(title: "Open Control API", action: #selector(openControlAPI), keyEquivalent: "")
+    private let openWebUIItem = NSMenuItem(title: "Open WebUI", action: #selector(openWebUI), keyEquivalent: "")
     private let openConfigItem = NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: "")
     private let openLogsItem = NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshNow), keyEquivalent: "r")
@@ -44,11 +46,13 @@ final class StatusMenuController: NSObject {
         servedItem.isEnabled = false
         runtimeItem.isEnabled = false
         scheduleItem.isEnabled = false
+        webUIItem.isEnabled = false
         modelsHeaderItem.isEnabled = false
         unloadItem.target = self
         rescanItem.target = self
         openAPIItem.target = self
         openControlItem.target = self
+        openWebUIItem.target = self
         openConfigItem.target = self
         openLogsItem.target = self
         refreshItem.target = self
@@ -61,6 +65,7 @@ final class StatusMenuController: NSObject {
         menu.addItem(servedItem)
         menu.addItem(runtimeItem)
         menu.addItem(scheduleItem)
+        menu.addItem(webUIItem)
         menu.addItem(.separator())
         menu.addItem(modelsHeaderItem)
         menu.addItem(unloadItem)
@@ -68,6 +73,7 @@ final class StatusMenuController: NSObject {
         menu.addItem(.separator())
         menu.addItem(openAPIItem)
         menu.addItem(openControlItem)
+        menu.addItem(openWebUIItem)
         menu.addItem(openConfigItem)
         menu.addItem(openLogsItem)
         menu.addItem(.separator())
@@ -143,6 +149,11 @@ final class StatusMenuController: NSObject {
         NSWorkspace.shared.open(url)
     }
 
+    @objc private func openWebUI() {
+        guard let urlString = currentStatus?.openWebUIURL, let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     @objc private func openConfig() {
         NSWorkspace.shared.open(Self.configURL)
     }
@@ -182,6 +193,7 @@ final class StatusMenuController: NSObject {
         self.loadedItem.title = "Loaded: unavailable"
         self.servedItem.title = "Served as: unavailable"
         self.runtimeItem.title = "Runtime: unavailable"
+        self.webUIItem.title = "Open WebUI: unavailable"
         self.modelsHeaderItem.title = "Models: unavailable"
         logger.error("menu error: \(message)")
     }
@@ -193,6 +205,17 @@ final class StatusMenuController: NSObject {
         loadedItem.title = "Loaded: \(status.loadedModelName ?? status.loadedModelID ?? "None")"
         servedItem.title = "Served as: \(status.servedModelName ?? "unknown")"
         runtimeItem.title = "Runtime: \(status.runtimePID.map { "PID \($0)" } ?? "stopped") · Port \(status.runtimePort)"
+        if let webUIURL = status.openWebUIURL {
+            webUIItem.title = "Open WebUI: \(status.openWebUIRunning ? "running" : "configured")"
+            openWebUIItem.title = status.openWebUIRunning ? "Open WebUI" : "Open WebUI (start if needed)"
+            openWebUIItem.isEnabled = true
+            webUIItem.toolTip = webUIURL
+        } else {
+            webUIItem.title = "Open WebUI: disabled"
+            openWebUIItem.title = "Open WebUI"
+            openWebUIItem.isEnabled = false
+            webUIItem.toolTip = nil
+        }
         modelsHeaderItem.title = "Models (\(knownModels.count))"
 
         if let rule = status.activeScheduleRule {
@@ -206,6 +229,7 @@ final class StatusMenuController: NSObject {
         unloadItem.isEnabled = status.running
         openAPIItem.isEnabled = URL(string: status.openAIBaseURL) != nil
         openControlItem.isEnabled = URL(string: status.controlBaseURL) != nil
+        openWebUIItem.isEnabled = status.openWebUIURL.flatMap(URL.init(string:)) != nil
         openConfigItem.isEnabled = FileManager.default.fileExists(atPath: Self.configURL.path)
         openLogsItem.isEnabled = FileManager.default.fileExists(atPath: Self.logsURL.path)
     }

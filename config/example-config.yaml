@@ -6,6 +6,11 @@ control_api:
   host: 127.0.0.1
   port: 18100
 
+open_webui:
+  enabled: true
+  host: 127.0.0.1
+  port: 3000
+
 runtime:
   host: 127.0.0.1
   port: 18083

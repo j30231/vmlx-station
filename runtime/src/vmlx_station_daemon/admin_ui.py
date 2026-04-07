@@ -199,6 +199,7 @@ def render_admin_ui() -> str:
       <div class="toolbar" style="margin-top: 14px;">
         <button id="refresh-btn">Refresh</button>
         <button class="secondary" id="rescan-btn">Rescan Models</button>
+        <button class="secondary" id="open-webui-btn">Open WebUI</button>
         <button class="warn" id="reload-btn">Reload Current</button>
         <button class="danger" id="unload-btn">Unload</button>
       </div>
@@ -356,6 +357,7 @@ def render_admin_ui() -> str:
         ["Loaded", status?.loaded_model_id || "None"],
         ["Served As", status?.served_model_name || "None"],
         ["Model Context", contextText],
+        ["Chat UI", status?.open_webui_running ? "Open WebUI running" : (status?.open_webui_url ? "Configured" : "Disabled")],
         ["OpenAI API", status?.openai_base_url || "Unavailable"],
         ["Control API", status?.control_base_url || "Unavailable"],
         ["Schedule", status?.schedule_enabled ? (status?.active_schedule_rule?.name || "Enabled") : "Disabled"],
@@ -450,6 +452,10 @@ def render_admin_ui() -> str:
         ? `Current loaded model supports up to ${formatNumber(loadedContext)} text tokens. vMLX does not expose a separate --context-length flag in this build, so we surface safe load/runtime knobs instead.`
         : "Current vMLX build does not expose a separate explicit max context length load flag in vmlx serve --help.";
       document.getElementById("runtime-context-hint").textContent = contextHint;
+      const openWebUIButton = document.getElementById("open-webui-btn");
+      const openWebUIURL = status?.open_webui_url;
+      openWebUIButton.disabled = !openWebUIURL;
+      openWebUIButton.textContent = status?.open_webui_running ? "Open WebUI" : "Open WebUI (start if needed)";
     }
 
     function normalizeRuntimeForm() {
@@ -688,6 +694,11 @@ def render_admin_ui() -> str:
       } catch (error) {
         document.getElementById("chat-output").textContent = error.message;
         notice(error.message, true);
+      }
+    });
+    document.getElementById("open-webui-btn").addEventListener("click", () => {
+      if (state.status?.open_webui_url) {
+        window.open(state.status.open_webui_url, "_blank", "noopener,noreferrer");
       }
     });
 

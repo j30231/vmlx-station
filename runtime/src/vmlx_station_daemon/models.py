@@ -36,6 +36,12 @@ class ControlAPIConfig(BaseModel):
     port: int = 18100
 
 
+class OpenWebUIConfig(BaseModel):
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 3000
+
+
 class RuntimeConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 18083
@@ -79,6 +85,7 @@ class RuntimeConfig(BaseModel):
 class AppConfig(BaseModel):
     model_roots: list[str] = Field(default_factory=list)
     control_api: ControlAPIConfig = Field(default_factory=ControlAPIConfig)
+    open_webui: OpenWebUIConfig = Field(default_factory=OpenWebUIConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
 
@@ -105,6 +112,8 @@ class RuntimeStatus(BaseModel):
     runtime_port: int
     openai_base_url: str
     control_base_url: str
+    open_webui_url: Optional[str] = None
+    open_webui_running: bool = False
     schedule_enabled: bool
     active_schedule_rule: Optional[ScheduleRule] = None
     warnings: list[str] = Field(default_factory=list)

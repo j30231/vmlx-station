@@ -42,6 +42,7 @@ The model API remains the standard OpenAI-compatible `vmlx` endpoint.
 - expose local control endpoints on `127.0.0.1:18100`
 - expose a built-in admin/test UI on `http://127.0.0.1:18100/admin`
 - expose inference through the managed `vmlx` server on `127.0.0.1:18083`
+- optionally install and run Open WebUI on `127.0.0.1:3000` as the default chat frontend
 - menu bar item that shows current model and lists installed models
 - time-of-day schedules
 - editable runtime tuning for major `vmlx serve` knobs
@@ -147,7 +148,17 @@ To remove it later:
 ./scripts/check_station.sh
 ```
 
-To remove both services:
+This installs:
+
+- the daemon
+- Open WebUI
+- the menu bar app
+
+The bundled Open WebUI install is configured for fast local chat startup.
+It disables built-in RAG embedding downloads by default, so the first launch does not stall while fetching sentence-transformer models from Hugging Face.
+If you later want knowledge/RAG features, you can re-enable embeddings in your own Open WebUI setup.
+
+To remove all three services:
 
 ```bash
 ./scripts/uninstall_station.sh
@@ -222,7 +233,9 @@ For a richer daily chat experience, use an external UI such as Open WebUI agains
 Connection values:
 
 - URL: `http://127.0.0.1:18083/v1`
-- API Key: leave blank unless you configured one in `vmlx-station`
+- API Key: leave blank in the UI unless you configured one in `vmlx-station`
+
+If you use the bundled `install_open_webui.sh`, the connection is preconfigured to the managed `vmlx` endpoint.
 
 This split keeps `vMLX Station` focused on:
 
