@@ -75,8 +75,6 @@ private struct RescanResponse: Decodable {
 
 private extension JSONDecoder {
     static var vmlxStation: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return decoder
+        JSONDecoder()
     }
 }

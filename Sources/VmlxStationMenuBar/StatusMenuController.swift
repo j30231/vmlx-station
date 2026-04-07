@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 
 @MainActor
 final class StatusMenuController: NSObject {
@@ -25,6 +26,7 @@ final class StatusMenuController: NSObject {
     private var currentStatus: StatusResponse?
     private var refreshTimer: Timer?
     private var modelItems: [NSMenuItem] = []
+    private let logger = Logger(subsystem: "com.vmlxstation.menu-bar", category: "StatusMenu")
 
     init(client: APIClient) {
         self.client = client
@@ -169,6 +171,7 @@ final class StatusMenuController: NSObject {
         self.knownModels = models
         self.apply(status: status)
         self.rebuildLoadSubmenu()
+        logger.notice("applyRefresh models=\(models.count) running=\(status.running)")
     }
 
     private func applyError(_ message: String) {
@@ -178,6 +181,7 @@ final class StatusMenuController: NSObject {
         self.servedItem.title = "Served as: unavailable"
         self.runtimeItem.title = "Runtime: unavailable"
         self.modelsHeaderItem.title = "Models: unavailable"
+        logger.error("menu error: \(message)")
     }
 
     private func apply(status: StatusResponse) {
@@ -233,6 +237,9 @@ final class StatusMenuController: NSObject {
         for (offset, item) in modelItems.enumerated() {
             menu.insertItem(item, at: insertionIndex + offset)
         }
+
+        let titles = modelItems.map(\.title).joined(separator: " | ")
+        logger.notice("rebuilt model items count=\(self.modelItems.count) titles=\(titles, privacy: .public)")
     }
 
     private static var appSupportURL: URL {
