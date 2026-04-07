@@ -1,0 +1,28 @@
+model_roots:
+  - /Users/jaesik/llm/gguf
+  - /Users/jaesik/llm/llm-models
+
+control_api:
+  host: 127.0.0.1
+  port: 18100
+
+runtime:
+  host: 127.0.0.1
+  port: 18083
+  vmlx_bin: /Users/jaesik/.venvs/vmlx/bin/vmlx
+  api_key: null
+  default_enable_thinking: false
+  extra_args: []
+
+schedule:
+  enabled: false
+  rules:
+    - name: day
+      start: "06:00"
+      end: "23:00"
+      model_id: gemma-4-e4b-it-4bit
+    - name: night
+      start: "23:00"
+      end: "06:00"
+      model_id: Gemma-4-31B-JANG_4M-CRACK
+

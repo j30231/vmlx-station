@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: vmlx-station-daemon
+Version: 0.1.0
+Summary: Runtime manager daemon for vMLX Station
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.116.0
+Requires-Dist: uvicorn>=0.35.0
+Requires-Dist: psutil>=7.0.0
+Requires-Dist: PyYAML>=6.0.2
+Requires-Dist: pydantic>=2.11.0
+
+# vMLX Station Daemon
+
+This daemon discovers local models, manages a `vmlx serve` child process, and exposes a small local control API for the macOS menu bar app.
+

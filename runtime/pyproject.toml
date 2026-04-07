@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vmlx-station-daemon"
+version = "0.1.0"
+description = "Runtime manager daemon for vMLX Station"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn>=0.35.0",
+  "psutil>=7.0.0",
+  "PyYAML>=6.0.2",
+  "pydantic>=2.11.0",
+]
+
+[project.scripts]
+vmlx-station-daemon = "vmlx_station_daemon.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

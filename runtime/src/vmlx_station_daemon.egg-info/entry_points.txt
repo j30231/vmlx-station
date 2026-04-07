@@ -1,0 +1,2 @@
+[console_scripts]
+vmlx-station-daemon = vmlx_station_daemon.cli:main
