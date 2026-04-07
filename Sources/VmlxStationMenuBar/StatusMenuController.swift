@@ -49,7 +49,9 @@ final class StatusMenuController: NSObject {
 
     private func startPolling() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+            Task { @MainActor in
+                self?.refresh()
+            }
         }
     }
 
@@ -63,9 +65,9 @@ final class StatusMenuController: NSObject {
             do {
                 try await client.unload()
             } catch {
-                await self.applyError("Unload failed: \(error.localizedDescription)")
+                self.applyError("Unload failed: \(error.localizedDescription)")
             }
-            await self.refreshFromTask()
+            self.refreshFromTask()
         }
     }
 
@@ -76,9 +78,9 @@ final class StatusMenuController: NSObject {
             do {
                 try await client.load(modelID: modelID)
             } catch {
-                await self.applyError("Load failed: \(error.localizedDescription)")
+                self.applyError("Load failed: \(error.localizedDescription)")
             }
-            await self.refreshFromTask()
+            self.refreshFromTask()
         }
     }
 
@@ -92,9 +94,9 @@ final class StatusMenuController: NSObject {
             do {
                 let status = try await client.fetchStatus()
                 let models = try await client.fetchModels()
-                await self.applyRefresh(status: status, models: models.items)
+                self.applyRefresh(status: status, models: models.items)
             } catch {
-                await self.applyError("Daemon unreachable: \(error.localizedDescription)")
+                self.applyError("Daemon unreachable: \(error.localizedDescription)")
             }
         }
     }
