@@ -220,7 +220,7 @@ def render_admin_ui() -> str:
           <label class="span-2">Prompt
             <textarea id="user-prompt" placeholder="Say something to the loaded model"></textarea>
           </label>
-          <label>Max Tokens
+          <label>Response Max Tokens
             <input id="chat-max-tokens" type="number" min="1" max="32768" value="256">
           </label>
           <label>Temperature
@@ -230,7 +230,7 @@ def render_admin_ui() -> str:
         <div class="button-row" style="margin-top: 12px;">
           <button id="send-chat-btn">Send Test Prompt</button>
         </div>
-        <div class="hint">This uses the currently loaded runtime on <code>/v1/chat/completions</code>.</div>
+        <div class="hint" id="chat-hint">This uses the currently loaded runtime on <code>/v1/chat/completions</code>.</div>
         <pre id="chat-output" style="margin-top: 12px;">No response yet.</pre>
       </article>
     </section>
@@ -282,7 +282,8 @@ def render_admin_ui() -> str:
             <input id="cfg-extra-args" type="text" placeholder="Example: --enable-jit --log-level INFO">
           </label>
         </div>
-        <div class="hint">Current vMLX build does not expose a separate explicit “max context length” load flag in <code>vmlx serve --help</code>. The closest tunable knobs today are max tokens, cache memory, batching, and streaming-related settings.</div>
+        <div class="hint" id="runtime-context-hint">Current vMLX build does not expose a separate explicit “max context length” load flag in <code>vmlx serve --help</code>. The closest tunable knobs today are response max tokens, cache memory, batching, and streaming-related settings.</div>
+        <pre id="runtime-rules" style="margin-top: 12px;">Loading runtime guidance...</pre>
         <div class="button-row" style="margin-top: 12px;">
           <button id="save-config-btn">Save Runtime Settings</button>
         </div>
@@ -319,7 +320,12 @@ def render_admin_ui() -> str:
   </div>
 
   <script>
-    const state = { status: null, models: [], config: null };
+    const state = { status: null, models: [], config: null, runtimeMetadata: null };
+
+    function formatNumber(value) {
+      if (value === null || value === undefined || value === "") return "Unknown";
+      return Number(value).toLocaleString("en-US");
+    }
 
     async function fetchJson(url, options = {}) {
       const response = await fetch(url, {
@@ -342,10 +348,14 @@ def render_admin_ui() -> str:
 
     function renderSummary() {
       const status = state.status;
+      const contextText = status?.loaded_model_text_context_tokens
+        ? `${formatNumber(status.loaded_model_text_context_tokens)} text`
+        : "Unknown";
       const items = [
         ["Runtime", status?.running ? "Running" : "Idle"],
         ["Loaded", status?.loaded_model_id || "None"],
         ["Served As", status?.served_model_name || "None"],
+        ["Model Context", contextText],
         ["OpenAI API", status?.openai_base_url || "Unavailable"],
         ["Control API", status?.control_base_url || "Unavailable"],
         ["Schedule", status?.schedule_enabled ? (status?.active_schedule_rule?.name || "Enabled") : "Disabled"],
@@ -362,15 +372,20 @@ def render_admin_ui() -> str:
       const loaded = state.status?.loaded_model_id;
       const html = state.models.map((model) => {
         const isLoaded = loaded === model.id;
+        const contexts = [
+          model.text_context_tokens ? `text ${formatNumber(model.text_context_tokens)}` : null,
+          model.vision_context_tokens ? `vision ${formatNumber(model.vision_context_tokens)}` : null,
+        ].filter(Boolean).join(" · ");
         return `
           <div class="model">
             <div class="model-top">
               <div>
                 <h3>${model.id}</h3>
-                <div class="meta">${model.engine} · ${model.source}${model.has_vision ? " · vision" : ""}${model.has_jang ? " · JANG" : ""}</div>
+                <div class="meta">${model.engine} · ${model.source}${model.has_vision ? " · vision" : ""}${model.has_jang ? " · JANG" : ""}${model.architecture ? ` · ${model.architecture}` : ""}</div>
               </div>
               <button data-load-model="${model.id}">${isLoaded ? "Reload" : "Load"}</button>
             </div>
+            <div class="meta">${contexts || "Context window unknown"}</div>
             <div class="meta">${model.path}</div>
           </div>
         `;
@@ -398,6 +413,43 @@ def render_admin_ui() -> str:
       select.innerHTML = state.models.map((model) => (
         `<option value="${model.id}" ${model.id === selectedValue ? "selected" : ""}>${model.id}</option>`
       )).join("");
+    }
+
+    function renderRuntimeHints() {
+      const metadata = state.runtimeMetadata;
+      const status = state.status;
+      const loadedContext = status?.loaded_model_text_context_tokens || null;
+      const maxTokensInput = document.getElementById("cfg-max-tokens");
+      const chatMaxTokensInput = document.getElementById("chat-max-tokens");
+      const maxTokensMeta = metadata?.fields?.max_tokens || { min: 1, max: 262144, default: 32768 };
+      maxTokensInput.min = maxTokensMeta.min ?? 1;
+      maxTokensInput.max = maxTokensMeta.max ?? 262144;
+      chatMaxTokensInput.min = 1;
+      chatMaxTokensInput.max = loadedContext || maxTokensMeta.max || 262144;
+
+      const rules = [
+        maxTokensMeta.note || "max_tokens is a generation cap, not the model context window.",
+      ];
+      if (loadedContext) {
+        rules.push(`Loaded model context window: ${formatNumber(loadedContext)} text tokens.`);
+      }
+      if (status?.warnings?.length) {
+        rules.push(...status.warnings);
+      }
+      if (metadata?.rules?.length) {
+        rules.push(...metadata.rules);
+      }
+      document.getElementById("runtime-rules").textContent = rules.join("\\n");
+
+      const chatHint = loadedContext
+        ? `Loaded model text context: ${formatNumber(loadedContext)}. The chat-test max tokens field is a response cap, not the full context budget.`
+        : "This uses the currently loaded runtime on /v1/chat/completions.";
+      document.getElementById("chat-hint").textContent = chatHint;
+
+      const contextHint = loadedContext
+        ? `Current loaded model supports up to ${formatNumber(loadedContext)} text tokens. vMLX does not expose a separate --context-length flag in this build, so we surface safe load/runtime knobs instead.`
+        : "Current vMLX build does not expose a separate explicit max context length load flag in vmlx serve --help.";
+      document.getElementById("runtime-context-hint").textContent = contextHint;
     }
 
     function renderConfigForm() {
@@ -430,17 +482,20 @@ def render_admin_ui() -> str:
       document.getElementById("night-end").value = night.end;
       setSelectOptions("day-model", day.model_id);
       setSelectOptions("night-model", night.model_id);
+      renderRuntimeHints();
     }
 
     async function refreshAll() {
-      const [status, models, config] = await Promise.all([
+      const [status, models, config, runtimeMetadata] = await Promise.all([
         fetchJson("/api/status"),
         fetchJson("/api/models"),
         fetchJson("/api/config"),
+        fetchJson("/api/runtime-metadata"),
       ]);
       state.status = status;
       state.models = models.items || [];
       state.config = config;
+      state.runtimeMetadata = runtimeMetadata;
       renderSummary();
       renderModels();
       renderConfigForm();

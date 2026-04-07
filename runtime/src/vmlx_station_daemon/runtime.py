@@ -31,8 +31,12 @@ class RuntimeManager:
 
     def load(self, model: InstalledModel, *, reason: str = "manual") -> RuntimeStatus:
         if self.is_running() and self._loaded_model and self._loaded_model.id == model.id:
+            self._loaded_model = model
+            self._served_model_name = self._served_model_name or _slugify(model.id)
+            self._write_state(reason=f"refresh-{reason}")
             return self.status(message=f"{model.name} already running ({reason})")
 
+        self._validate_model_runtime_compatibility(model)
         self.unload()
         log_path = self.paths.log_dir / "runtime.log"
         log_handle = log_path.open("a", encoding="utf-8")
@@ -112,17 +116,30 @@ class RuntimeManager:
         runtime_pid = self._runtime_pid()
         loaded_model_id = self._loaded_model.id if self._loaded_model else None
         loaded_model_name = self._loaded_model.name if self._loaded_model else None
+        warnings: list[str] = []
+        if self._loaded_model and self._loaded_model.text_context_tokens:
+            if self.config.runtime.max_tokens > self._loaded_model.text_context_tokens:
+                warnings.append(
+                    "Configured max_tokens is higher than the loaded model's text context window."
+                )
         return RuntimeStatus(
             running=runtime_pid is not None,
             loaded_model_id=loaded_model_id,
             loaded_model_name=loaded_model_name,
             served_model_name=self._served_model_name,
+            loaded_model_text_context_tokens=(
+                self._loaded_model.text_context_tokens if self._loaded_model else None
+            ),
+            loaded_model_vision_context_tokens=(
+                self._loaded_model.vision_context_tokens if self._loaded_model else None
+            ),
             runtime_pid=runtime_pid,
             runtime_port=self.config.runtime.port,
             openai_base_url=f"http://{self.config.runtime.host}:{self.config.runtime.port}/v1",
             control_base_url=f"http://{self.config.control_api.host}:{self.config.control_api.port}",
             schedule_enabled=self.config.schedule.enabled,
             active_schedule_rule=schedule_rule,
+            warnings=warnings,
             message=message,
         )
 
@@ -131,8 +148,7 @@ class RuntimeManager:
         payload = {
             "running": runtime_pid is not None,
             "pid": runtime_pid,
-            "loaded_model_id": self._loaded_model.id if self._loaded_model else None,
-            "loaded_model_name": self._loaded_model.name if self._loaded_model else None,
+            "loaded_model": self._loaded_model.model_dump() if self._loaded_model else None,
             "served_model_name": self._served_model_name,
             "reason": reason,
             "openai_base_url": f"http://{self.config.runtime.host}:{self.config.runtime.port}/v1",
@@ -166,16 +182,23 @@ class RuntimeManager:
             and self._port_open(self.config.runtime.host, self.config.runtime.port)
         ):
             self._managed_pid = pid
-            loaded_model_id = payload.get("loaded_model_id")
-            loaded_model_name = payload.get("loaded_model_name")
-            if isinstance(loaded_model_id, str) and isinstance(loaded_model_name, str):
-                self._loaded_model = InstalledModel(
-                    id=loaded_model_id,
-                    name=loaded_model_name,
-                    path="unknown",
-                    engine="unknown",
-                    source="recovered-state",
-                )
+            loaded_model = payload.get("loaded_model")
+            if isinstance(loaded_model, dict):
+                try:
+                    self._loaded_model = InstalledModel.model_validate(loaded_model)
+                except Exception:
+                    self._loaded_model = None
+            else:
+                loaded_model_id = payload.get("loaded_model_id")
+                loaded_model_name = payload.get("loaded_model_name")
+                if isinstance(loaded_model_id, str) and isinstance(loaded_model_name, str):
+                    self._loaded_model = InstalledModel(
+                        id=loaded_model_id,
+                        name=loaded_model_name,
+                        path="unknown",
+                        engine="unknown",
+                        source="recovered-state",
+                    )
             served_model_name = payload.get("served_model_name")
             if isinstance(served_model_name, str):
                 self._served_model_name = served_model_name
@@ -244,6 +267,15 @@ class RuntimeManager:
                 source="recovered-live",
             )
             self._served_model_name = _slugify(live_model_id)
+
+    def _validate_model_runtime_compatibility(self, model: InstalledModel) -> None:
+        text_context = model.text_context_tokens
+        if text_context and self.config.runtime.max_tokens > text_context:
+            raise ValueError(
+                f"Configured max_tokens ({self.config.runtime.max_tokens}) exceeds "
+                f"{model.id}'s text context window ({text_context}). "
+                "Lower max_tokens before loading this model."
+            )
 
     @staticmethod
     def _listener_pid(port: int) -> int | None:

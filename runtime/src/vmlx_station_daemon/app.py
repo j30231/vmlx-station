@@ -63,6 +63,73 @@ def create_app() -> FastAPI:
         items = model_index.scan()
         return {"items": [item.model_dump() for item in items], "count": len(items)}
 
+    @app.get("/api/runtime-metadata")
+    async def runtime_metadata() -> dict[str, object]:
+        return {
+            "fields": {
+                "max_tokens": {
+                    "label": "Default response max tokens",
+                    "min": 1,
+                    "max": 262144,
+                    "default": 32768,
+                    "note": "Generation cap passed to vmlx serve. This is not the model context window.",
+                },
+                "max_num_seqs": {
+                    "label": "Maximum concurrent sequences",
+                    "min": 1,
+                    "max": 4096,
+                    "default": 256,
+                    "note": "Practical concurrency only applies with continuous batching enabled.",
+                },
+                "cache_memory_percent": {
+                    "label": "Prefix cache memory fraction",
+                    "min": 0.01,
+                    "max": 0.95,
+                    "default": 0.30,
+                    "note": "Fraction of unified memory reserved for prefix cache when auto-sizing.",
+                },
+                "paged_cache_block_size": {
+                    "label": "Paged cache block size",
+                    "min": 1,
+                    "max": 4096,
+                    "default": 64,
+                    "note": "Tokens per paged KV block when paged cache is enabled.",
+                },
+                "max_cache_blocks": {
+                    "label": "Maximum paged cache blocks",
+                    "min": 1,
+                    "max": 1000000,
+                    "default": 1000,
+                    "note": "Total paged-cache capacity is block_size × max_cache_blocks.",
+                },
+                "kv_cache_quantization": {
+                    "label": "KV cache quantization",
+                    "choices": ["none", "q4", "q8"],
+                    "default": "none",
+                    "note": "Requires continuous batching. q4/q8 compress the cached KV state, not the base model weights.",
+                },
+                "kv_cache_group_size": {
+                    "label": "KV quantization group size",
+                    "min": 1,
+                    "max": 4096,
+                    "default": 64,
+                    "note": "Only used when KV cache quantization is q4 or q8.",
+                },
+                "stream_memory_percent": {
+                    "label": "Disk-streaming Metal memory fraction",
+                    "min": 1,
+                    "max": 99,
+                    "default": 90,
+                    "note": "Only relevant when stream-from-disk mode is enabled.",
+                },
+            },
+            "rules": [
+                "If stream_from_disk is enabled, max_num_seqs must be 1.",
+                "stream_from_disk cannot be combined with continuous batching, prefix cache, paged cache, or KV cache quantization.",
+                "KV cache quantization and paged cache both require continuous batching.",
+            ],
+        }
+
     @app.post("/api/load", response_model=RuntimeStatus)
     async def load_model(request: LoadRequest) -> RuntimeStatus:
         model_index: ModelIndex = app.state.model_index
@@ -70,7 +137,10 @@ def create_app() -> FastAPI:
         model = model_index.get(request.model_id)
         if not model:
             raise HTTPException(status_code=404, detail=f"Model not found: {request.model_id}")
-        return runtime.load(model)
+        try:
+            return runtime.load(model)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post("/api/unload")
     async def unload_model() -> dict[str, str]:
@@ -89,7 +159,10 @@ def create_app() -> FastAPI:
         model = model_index.get(model_id)
         if not model:
             raise HTTPException(status_code=409, detail=f"Loaded model not found in index: {model_id}")
-        return runtime.load(model, reason="reload")
+        try:
+            return runtime.load(model, reason="reload")
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post("/api/rescan")
     async def rescan() -> dict[str, object]:
@@ -135,6 +208,15 @@ def create_app() -> FastAPI:
         if request.system_prompt.strip():
             messages.append({"role": "system", "content": request.system_prompt.strip()})
         messages.append({"role": "user", "content": request.prompt})
+        if runtime._loaded_model and runtime._loaded_model.text_context_tokens:
+            if request.max_tokens > runtime._loaded_model.text_context_tokens:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Requested max_tokens ({request.max_tokens}) exceeds the loaded model's "
+                        f"text context window ({runtime._loaded_model.text_context_tokens})."
+                    ),
+                )
         payload: dict[str, object] = {
             "model": model_name,
             "messages": messages,

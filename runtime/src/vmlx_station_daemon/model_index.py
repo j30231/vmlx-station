@@ -49,12 +49,31 @@ class ModelIndex:
             except Exception:
                 config = {}
 
-        name = config.get("_name_or_path") or config.get("model_type") or path.name
+        text_config = config.get("text_config") if isinstance(config.get("text_config"), dict) else {}
+        vision_config = config.get("vision_config") if isinstance(config.get("vision_config"), dict) else {}
+
+        name = config.get("_name_or_path") or path.name
         source = path.parent.name
-        has_vision = bool(config.get("vision_config"))
+        has_vision = bool(vision_config)
         has_jang = jang_path.exists()
         engine = "jang-vmlx" if has_jang else "mlx-vmlx"
         model_id = path.name
+        architecture = None
+        architectures = config.get("architectures")
+        if isinstance(architectures, list) and architectures:
+            first = architectures[0]
+            if isinstance(first, str):
+                architecture = first
+
+        text_context_tokens = text_config.get("max_position_embeddings")
+        if not isinstance(text_context_tokens, int):
+            text_context_tokens = config.get("max_position_embeddings")
+        if not isinstance(text_context_tokens, int):
+            text_context_tokens = None
+
+        vision_context_tokens = vision_config.get("max_position_embeddings")
+        if not isinstance(vision_context_tokens, int):
+            vision_context_tokens = None
 
         return InstalledModel(
             id=model_id,
@@ -62,7 +81,10 @@ class ModelIndex:
             path=str(path),
             engine=engine,
             source=source,
+            model_type=str(config.get("model_type")) if config.get("model_type") else None,
+            architecture=architecture,
+            text_context_tokens=text_context_tokens,
+            vision_context_tokens=vision_context_tokens,
             has_jang=has_jang,
             has_vision=has_vision,
         )
-

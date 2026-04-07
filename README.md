@@ -45,6 +45,8 @@ The model API remains the standard OpenAI-compatible `vmlx` endpoint.
 - menu bar item that shows current model and lists installed models
 - time-of-day schedules
 - editable runtime tuning for major `vmlx serve` knobs
+- model cards that show discovered text and vision context windows
+- runtime validation that blocks obviously incompatible setting combinations before load
 
 ## Supported model types
 
@@ -210,7 +212,13 @@ It includes:
 Note on context length:
 
 - the current `vmlx serve --help` output does not expose a dedicated `--context-length` or `--max-model-len` flag
+- `max_tokens` in `vmlx serve` is the default response-generation cap, not the model context window
 - the practical knobs available today are `max_tokens`, cache memory, batching, paged cache, KV cache quantization, and disk-streaming settings
+- `vMLX Station` now reads each model's `text_config.max_position_embeddings` where available and shows that separately in the UI
+- the daemon blocks a few bad combinations up front:
+  - `kv_cache_quantization` requires `continuous_batching`
+  - `use_paged_cache` requires `continuous_batching`
+  - `stream_from_disk` requires `max_num_seqs=1` and cannot be combined with batching/cache features
 
 ## Roadmap
 

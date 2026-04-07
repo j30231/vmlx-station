@@ -12,6 +12,8 @@ runtime:
   vmlx_bin: /Users/jaesik/.venvs/vmlx/bin/vmlx
   api_key: null
   default_enable_thinking: false
+  # Default response-generation cap passed to vmlx serve.
+  # This is not the same thing as a model's context window.
   max_tokens: 32768
   max_num_seqs: 256
   continuous_batching: false
