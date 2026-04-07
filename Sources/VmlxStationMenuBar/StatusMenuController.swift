@@ -12,7 +12,7 @@ final class StatusMenuController: NSObject {
     private let servedItem = NSMenuItem(title: "Served as: unknown", action: nil, keyEquivalent: "")
     private let runtimeItem = NSMenuItem(title: "Runtime: unknown", action: nil, keyEquivalent: "")
     private let scheduleItem = NSMenuItem(title: "Schedule: unknown", action: nil, keyEquivalent: "")
-    private let loadMenuItem = NSMenuItem(title: "Load Model", action: nil, keyEquivalent: "")
+    private let modelsHeaderItem = NSMenuItem(title: "Models", action: nil, keyEquivalent: "")
     private let unloadItem = NSMenuItem(title: "Unload Current Model", action: #selector(unloadCurrentModel), keyEquivalent: "")
     private let rescanItem = NSMenuItem(title: "Rescan Models", action: #selector(rescanModels), keyEquivalent: "")
     private let openAPIItem = NSMenuItem(title: "Open Model API in Browser", action: #selector(openModelAPI), keyEquivalent: "")
@@ -24,6 +24,7 @@ final class StatusMenuController: NSObject {
     private var knownModels: [InstalledModel] = []
     private var currentStatus: StatusResponse?
     private var refreshTimer: Timer?
+    private var modelItems: [NSMenuItem] = []
 
     init(client: APIClient) {
         self.client = client
@@ -41,6 +42,7 @@ final class StatusMenuController: NSObject {
         servedItem.isEnabled = false
         runtimeItem.isEnabled = false
         scheduleItem.isEnabled = false
+        modelsHeaderItem.isEnabled = false
         unloadItem.target = self
         rescanItem.target = self
         openAPIItem.target = self
@@ -58,7 +60,7 @@ final class StatusMenuController: NSObject {
         menu.addItem(runtimeItem)
         menu.addItem(scheduleItem)
         menu.addItem(.separator())
-        menu.addItem(loadMenuItem)
+        menu.addItem(modelsHeaderItem)
         menu.addItem(unloadItem)
         menu.addItem(rescanItem)
         menu.addItem(.separator())
@@ -175,6 +177,7 @@ final class StatusMenuController: NSObject {
         self.loadedItem.title = "Loaded: unavailable"
         self.servedItem.title = "Served as: unavailable"
         self.runtimeItem.title = "Runtime: unavailable"
+        self.modelsHeaderItem.title = "Models: unavailable"
     }
 
     private func apply(status: StatusResponse) {
@@ -184,6 +187,7 @@ final class StatusMenuController: NSObject {
         loadedItem.title = "Loaded: \(status.loadedModelName ?? status.loadedModelID ?? "None")"
         servedItem.title = "Served as: \(status.servedModelName ?? "unknown")"
         runtimeItem.title = "Runtime: \(status.runtimePID.map { "PID \($0)" } ?? "stopped") · Port \(status.runtimePort)"
+        modelsHeaderItem.title = "Models (\(knownModels.count))"
 
         if let rule = status.activeScheduleRule {
             scheduleItem.title = status.scheduleEnabled
@@ -201,24 +205,34 @@ final class StatusMenuController: NSObject {
     }
 
     private func rebuildLoadSubmenu() {
-        let submenu = NSMenu()
+        for item in modelItems {
+            menu.removeItem(item)
+        }
+        modelItems.removeAll()
+
+        let insertionIndex = menu.index(of: unloadItem)
+        guard insertionIndex != -1 else { return }
+
         if knownModels.isEmpty {
             let empty = NSMenuItem(title: "No models found", action: nil, keyEquivalent: "")
             empty.isEnabled = false
-            submenu.addItem(empty)
+            modelItems = [empty]
         } else {
-            for model in knownModels {
+            modelItems = knownModels.map { model in
                 let item = NSMenuItem(
-                    title: "\(model.name) [\(model.engine)]",
+                    title: "Load \(model.id) [\(model.engine)]",
                     action: #selector(loadModel(_:)),
                     keyEquivalent: ""
                 )
                 item.target = self
                 item.representedObject = model.id
-                submenu.addItem(item)
+                return item
             }
         }
-        loadMenuItem.submenu = submenu
+
+        for (offset, item) in modelItems.enumerated() {
+            menu.insertItem(item, at: insertionIndex + offset)
+        }
     }
 
     private static var appSupportURL: URL {
