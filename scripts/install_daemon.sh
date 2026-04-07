@@ -10,8 +10,11 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 LABEL="com.vmlxstation.daemon"
 PLIST_PATH="$LAUNCH_AGENTS_DIR/$LABEL.plist"
 WRAPPER_PATH="$BIN_DIR/run_vmlx_station_daemon.sh"
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/runtime/.venv}"
 
 mkdir -p "$BIN_DIR" "$LOG_DIR" "$CONFIG_DIR" "$LAUNCH_AGENTS_DIR"
+
+"$ROOT_DIR/scripts/bootstrap_runtime.sh"
 
 if [ ! -f "$APP_SUPPORT_DIR/config.yaml" ]; then
   cp "$ROOT_DIR/config/example-config.yaml" "$APP_SUPPORT_DIR/config.yaml"
@@ -67,7 +70,26 @@ launchctl bootout "gui/$(id -u)" "$PLIST_PATH" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 
+CONTROL_BASE_URL="$("$VENV_DIR/bin/python" - <<'PY'
+from vmlx_station_daemon.config import AppPaths, load_config
+
+config = load_config(AppPaths.default())
+print(f"http://{config.control_api.host}:{config.control_api.port}")
+PY
+)"
+
+for _ in $(seq 1 30); do
+  if curl -fsS "$CONTROL_BASE_URL/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if ! curl -fsS "$CONTROL_BASE_URL/health" >/dev/null 2>&1; then
+  echo "Daemon did not become healthy: $CONTROL_BASE_URL/health" >&2
+  exit 1
+fi
+
 echo "Installed and started $LABEL"
 echo "Config: $APP_SUPPORT_DIR/config.yaml"
 echo "Check with: $ROOT_DIR/scripts/check_daemon.sh"
-

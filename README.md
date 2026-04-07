@@ -74,10 +74,7 @@ For JANG models, true TurboQuant support depends on the official `jang-tools` pa
 ### 1. Create a Python venv for the daemon
 
 ```bash
-cd runtime
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+./scripts/bootstrap_runtime.sh
 ```
 
 ### 2. Install `vmlx`
@@ -116,6 +113,8 @@ swift build
 ./scripts/install_daemon.sh
 ./scripts/check_daemon.sh
 ```
+
+`install_daemon.sh` will bootstrap `runtime/.venv` automatically if it does not exist.
 
 To remove it later:
 
