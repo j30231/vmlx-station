@@ -110,6 +110,45 @@ swift build
 .build/debug/VmlxStationMenuBar
 ```
 
+### 6. Install the daemon as a LaunchAgent
+
+```bash
+./scripts/install_daemon.sh
+./scripts/check_daemon.sh
+```
+
+To remove it later:
+
+```bash
+./scripts/uninstall_daemon.sh
+```
+
+### 7. Install the menu bar app as a LaunchAgent
+
+```bash
+./scripts/install_menu_bar.sh
+./scripts/check_menu_bar.sh
+```
+
+To remove it later:
+
+```bash
+./scripts/uninstall_menu_bar.sh
+```
+
+### 8. Install the full station
+
+```bash
+./scripts/install_station.sh
+./scripts/check_station.sh
+```
+
+To remove both services:
+
+```bash
+./scripts/uninstall_station.sh
+```
+
 ## Control API
 
 The daemon exposes a small local API:
@@ -122,6 +161,20 @@ The daemon exposes a small local API:
 - `POST /api/rescan`
 - `GET /api/schedule`
 - `PUT /api/schedule`
+
+Example:
+
+```bash
+curl -X PUT http://127.0.0.1:18100/api/schedule \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "enabled": true,
+    "rules": [
+      {"name":"day","start":"06:00","end":"23:00","model_id":"gemma-4-e4b-it-4bit"},
+      {"name":"night","start":"23:00","end":"06:00","model_id":"Gemma-4-31B-JANG_4M-CRACK"}
+    ]
+  }'
+```
 
 ## OpenAI-compatible inference endpoint
 
@@ -138,4 +191,3 @@ See [ROADMAP.md](/Users/jaesik/Documents/New%20project/vmlx-station/docs/ROADMAP
 ## License
 
 Apache-2.0
-

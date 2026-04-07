@@ -25,6 +25,11 @@ actor APIClient {
         try await post("api/unload", body: [:])
     }
 
+    func rescan() async throws -> Int {
+        let response = try await post("api/rescan", body: [:], as: RescanResponse.self)
+        return response.count
+    }
+
     private func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
         let (data, response) = try await session.data(from: baseURL.appendingPathComponent(path))
         try validate(response: response, data: data)
@@ -40,6 +45,16 @@ actor APIClient {
         try validate(response: response, data: data)
     }
 
+    private func post<T: Decodable>(_ path: String, body: [String: Any], as type: T.Type) async throws -> T {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder.vmlxStation.decode(T.self, from: data)
+    }
+
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -51,6 +66,11 @@ actor APIClient {
             ])
         }
     }
+}
+
+private struct RescanResponse: Decodable {
+    let status: String
+    let count: Int
 }
 
 private extension JSONDecoder {

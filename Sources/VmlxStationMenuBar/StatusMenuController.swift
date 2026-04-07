@@ -8,12 +8,21 @@ final class StatusMenuController: NSObject {
     private let menu = NSMenu()
     private let headerItem = NSMenuItem(title: "vMLX Station", action: nil, keyEquivalent: "")
     private let stateItem = NSMenuItem(title: "Loading...", action: nil, keyEquivalent: "")
+    private let loadedItem = NSMenuItem(title: "Loaded: unknown", action: nil, keyEquivalent: "")
+    private let servedItem = NSMenuItem(title: "Served as: unknown", action: nil, keyEquivalent: "")
+    private let runtimeItem = NSMenuItem(title: "Runtime: unknown", action: nil, keyEquivalent: "")
     private let scheduleItem = NSMenuItem(title: "Schedule: unknown", action: nil, keyEquivalent: "")
     private let loadMenuItem = NSMenuItem(title: "Load Model", action: nil, keyEquivalent: "")
     private let unloadItem = NSMenuItem(title: "Unload Current Model", action: #selector(unloadCurrentModel), keyEquivalent: "")
+    private let rescanItem = NSMenuItem(title: "Rescan Models", action: #selector(rescanModels), keyEquivalent: "")
+    private let openAPIItem = NSMenuItem(title: "Open Model API in Browser", action: #selector(openModelAPI), keyEquivalent: "")
+    private let openControlItem = NSMenuItem(title: "Open Control API", action: #selector(openControlAPI), keyEquivalent: "")
+    private let openConfigItem = NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: "")
+    private let openLogsItem = NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshNow), keyEquivalent: "r")
     private let quitItem = NSMenuItem(title: "Quit vMLX Station", action: #selector(quitApp), keyEquivalent: "q")
     private var knownModels: [InstalledModel] = []
+    private var currentStatus: StatusResponse?
     private var refreshTimer: Timer?
 
     init(client: APIClient) {
@@ -28,18 +37,35 @@ final class StatusMenuController: NSObject {
         statusItem.button?.title = "vMLX"
         headerItem.isEnabled = false
         stateItem.isEnabled = false
+        loadedItem.isEnabled = false
+        servedItem.isEnabled = false
+        runtimeItem.isEnabled = false
         scheduleItem.isEnabled = false
         unloadItem.target = self
+        rescanItem.target = self
+        openAPIItem.target = self
+        openControlItem.target = self
+        openConfigItem.target = self
+        openLogsItem.target = self
         refreshItem.target = self
         quitItem.target = self
 
         menu.addItem(headerItem)
         menu.addItem(.separator())
         menu.addItem(stateItem)
+        menu.addItem(loadedItem)
+        menu.addItem(servedItem)
+        menu.addItem(runtimeItem)
         menu.addItem(scheduleItem)
         menu.addItem(.separator())
         menu.addItem(loadMenuItem)
         menu.addItem(unloadItem)
+        menu.addItem(rescanItem)
+        menu.addItem(.separator())
+        menu.addItem(openAPIItem)
+        menu.addItem(openControlItem)
+        menu.addItem(openConfigItem)
+        menu.addItem(openLogsItem)
         menu.addItem(.separator())
         menu.addItem(refreshItem)
         menu.addItem(quitItem)
@@ -57,6 +83,19 @@ final class StatusMenuController: NSObject {
 
     @objc private func refreshNow() {
         refresh()
+    }
+
+    @objc private func rescanModels() {
+        let client = self.client
+        Task {
+            do {
+                let count = try await client.rescan()
+                self.stateItem.title = "Rescanned \(count) models"
+            } catch {
+                self.applyError("Rescan failed: \(error.localizedDescription)")
+            }
+            self.refreshFromTask()
+        }
     }
 
     @objc private func unloadCurrentModel() {
@@ -88,6 +127,24 @@ final class StatusMenuController: NSObject {
         NSApp.terminate(nil)
     }
 
+    @objc private func openModelAPI() {
+        guard let urlString = currentStatus?.openAIBaseURL, let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openControlAPI() {
+        guard let urlString = currentStatus?.controlBaseURL, let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openConfig() {
+        NSWorkspace.shared.open(Self.configURL)
+    }
+
+    @objc private func openLogs() {
+        NSWorkspace.shared.open(Self.logsURL)
+    }
+
     private func refresh() {
         let client = self.client
         Task {
@@ -106,6 +163,7 @@ final class StatusMenuController: NSObject {
     }
 
     private func applyRefresh(status: StatusResponse, models: [InstalledModel]) {
+        self.currentStatus = status
         self.knownModels = models
         self.apply(status: status)
         self.rebuildLoadSubmenu()
@@ -114,12 +172,18 @@ final class StatusMenuController: NSObject {
     private func applyError(_ message: String) {
         self.statusItem.button?.title = "vMLX?"
         self.stateItem.title = message
+        self.loadedItem.title = "Loaded: unavailable"
+        self.servedItem.title = "Served as: unavailable"
+        self.runtimeItem.title = "Runtime: unavailable"
     }
 
     private func apply(status: StatusResponse) {
-        let runningTitle = status.running ? (status.loadedModelName ?? "Running") : "Idle"
-        statusItem.button?.title = status.running ? "vMLX: \(runningTitle)" : "vMLX"
+        let runningTitle = status.running ? Self.compactName(status.loadedModelName ?? status.loadedModelID ?? "Running") : "Idle"
+        statusItem.button?.title = status.running ? "vMLX • \(runningTitle)" : "vMLX"
         stateItem.title = status.message
+        loadedItem.title = "Loaded: \(status.loadedModelName ?? status.loadedModelID ?? "None")"
+        servedItem.title = "Served as: \(status.servedModelName ?? "unknown")"
+        runtimeItem.title = "Runtime: \(status.runtimePID.map { "PID \($0)" } ?? "stopped") · Port \(status.runtimePort)"
 
         if let rule = status.activeScheduleRule {
             scheduleItem.title = status.scheduleEnabled
@@ -130,6 +194,10 @@ final class StatusMenuController: NSObject {
         }
 
         unloadItem.isEnabled = status.running
+        openAPIItem.isEnabled = URL(string: status.openAIBaseURL) != nil
+        openControlItem.isEnabled = URL(string: status.controlBaseURL) != nil
+        openConfigItem.isEnabled = FileManager.default.fileExists(atPath: Self.configURL.path)
+        openLogsItem.isEnabled = FileManager.default.fileExists(atPath: Self.logsURL.path)
     }
 
     private func rebuildLoadSubmenu() {
@@ -151,5 +219,24 @@ final class StatusMenuController: NSObject {
             }
         }
         loadMenuItem.submenu = submenu
+    }
+
+    private static var appSupportURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/vmlx-station", isDirectory: true)
+    }
+
+    private static var configURL: URL {
+        appSupportURL.appendingPathComponent("config.yaml", isDirectory: false)
+    }
+
+    private static var logsURL: URL {
+        appSupportURL.appendingPathComponent("logs", isDirectory: true)
+    }
+
+    private static func compactName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 24 else { return trimmed }
+        return "\(trimmed.prefix(21))..."
     }
 }

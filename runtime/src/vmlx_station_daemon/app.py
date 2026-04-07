@@ -66,15 +66,19 @@ def create_app() -> FastAPI:
 
     @app.get("/api/schedule", response_model=ScheduleConfig)
     async def get_schedule() -> ScheduleConfig:
-        return config.schedule
+        return app.state.config.schedule
 
     @app.put("/api/schedule", response_model=ScheduleConfig)
     async def put_schedule(schedule: ScheduleConfig) -> ScheduleConfig:
-        new_config = AppConfig.model_validate({**config.model_dump(), "schedule": schedule.model_dump()})
+        current_config: AppConfig = app.state.config
+        new_config = AppConfig.model_validate(
+            {**current_config.model_dump(), "schedule": schedule.model_dump()}
+        )
         app.state.config = new_config
         runtime.config = new_config
         scheduler.config = new_config
         save_config(paths, new_config)
+        scheduler.apply_if_needed()
         return new_config.schedule
 
     return app
@@ -87,4 +91,3 @@ def _status_message(runtime: RuntimeManager, rule) -> str:
     if rule:
         return f"Idle; next scheduled model {rule.model_id}"
     return "Idle"
-
