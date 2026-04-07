@@ -6,6 +6,7 @@ import signal
 import socket
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 
 from .config import AppPaths
@@ -23,8 +24,10 @@ class RuntimeManager:
         self.paths = paths
         self.paths.ensure()
         self._process: subprocess.Popen[str] | None = None
+        self._managed_pid: int | None = None
         self._loaded_model: InstalledModel | None = None
         self._served_model_name: str | None = None
+        self._recover_state()
 
     def load(self, model: InstalledModel, *, reason: str = "manual") -> RuntimeStatus:
         if self.is_running() and self._loaded_model and self._loaded_model.id == model.id:
@@ -59,6 +62,7 @@ class RuntimeManager:
             text=True,
             start_new_session=True,
         )
+        self._managed_pid = self._process.pid
         self._loaded_model = model
         self._served_model_name = served_model_name
         self._wait_for_port(self.config.runtime.host, self.config.runtime.port, timeout=180)
@@ -66,27 +70,24 @@ class RuntimeManager:
         return self.status(message=f"Loaded {model.name} ({reason})")
 
     def unload(self) -> None:
-        if self._process and self._process.poll() is None:
-            os.killpg(os.getpgid(self._process.pid), signal.SIGTERM)
-            try:
-                self._process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(os.getpgid(self._process.pid), signal.SIGKILL)
-                self._process.wait(timeout=5)
+        pid = self._runtime_pid()
+        if pid:
+            self._terminate_pid(pid)
         self._process = None
+        self._managed_pid = None
         self._loaded_model = None
         self._served_model_name = None
         self._write_state(reason="unload")
 
     def is_running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        return self._runtime_pid() is not None
 
     def status(self, *, schedule_rule: ScheduleRule | None = None, message: str = "Idle") -> RuntimeStatus:
-        runtime_pid = self._process.pid if self.is_running() else None
+        runtime_pid = self._runtime_pid()
         loaded_model_id = self._loaded_model.id if self._loaded_model else None
         loaded_model_name = self._loaded_model.name if self._loaded_model else None
         return RuntimeStatus(
-            running=self.is_running(),
+            running=runtime_pid is not None,
             loaded_model_id=loaded_model_id,
             loaded_model_name=loaded_model_name,
             served_model_name=self._served_model_name,
@@ -100,9 +101,10 @@ class RuntimeManager:
         )
 
     def _write_state(self, *, reason: str) -> None:
+        runtime_pid = self._runtime_pid()
         payload = {
-            "running": self.is_running(),
-            "pid": self._process.pid if self.is_running() else None,
+            "running": runtime_pid is not None,
+            "pid": runtime_pid,
             "loaded_model_id": self._loaded_model.id if self._loaded_model else None,
             "loaded_model_name": self._loaded_model.name if self._loaded_model else None,
             "served_model_name": self._served_model_name,
@@ -122,3 +124,130 @@ class RuntimeManager:
             time.sleep(1)
         raise TimeoutError(f"Timed out waiting for {host}:{port}")
 
+    def _recover_state(self) -> None:
+        path = self.paths.runtime_state_path
+        payload: dict[str, object] = {}
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+
+        pid = payload.get("pid")
+        if (
+            isinstance(pid, int)
+            and self._pid_alive(pid)
+            and self._port_open(self.config.runtime.host, self.config.runtime.port)
+        ):
+            self._managed_pid = pid
+            loaded_model_id = payload.get("loaded_model_id")
+            loaded_model_name = payload.get("loaded_model_name")
+            if isinstance(loaded_model_id, str) and isinstance(loaded_model_name, str):
+                self._loaded_model = InstalledModel(
+                    id=loaded_model_id,
+                    name=loaded_model_name,
+                    path="unknown",
+                    engine="unknown",
+                    source="recovered-state",
+                )
+            served_model_name = payload.get("served_model_name")
+            if isinstance(served_model_name, str):
+                self._served_model_name = served_model_name
+            return
+
+        self._recover_from_live_runtime()
+
+    def _runtime_pid(self) -> int | None:
+        if self._process is not None:
+            if self._process.poll() is None:
+                self._managed_pid = self._process.pid
+                return self._process.pid
+            self._process = None
+
+        if self._managed_pid and self._pid_alive(self._managed_pid) and self._port_open(
+            self.config.runtime.host, self.config.runtime.port
+        ):
+            return self._managed_pid
+        return None
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+
+    @staticmethod
+    def _port_open(host: str, port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            return sock.connect_ex((host, port)) == 0
+
+    @staticmethod
+    def _terminate_pid(pid: int) -> None:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if not RuntimeManager._pid_alive(pid):
+                return
+            time.sleep(0.25)
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except ProcessLookupError:
+            return
+
+    def _recover_from_live_runtime(self) -> None:
+        if not self._port_open(self.config.runtime.host, self.config.runtime.port):
+            return
+
+        pid = self._listener_pid(self.config.runtime.port)
+        if pid:
+            self._managed_pid = pid
+
+        live_model_id = self._live_model_id()
+        if live_model_id:
+            self._loaded_model = InstalledModel(
+                id=live_model_id,
+                name=live_model_id,
+                path="unknown",
+                engine="unknown",
+                source="recovered-live",
+            )
+            self._served_model_name = _slugify(live_model_id)
+
+    @staticmethod
+    def _listener_pid(port: int) -> int | None:
+        try:
+            output = subprocess.check_output(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except subprocess.CalledProcessError:
+            return None
+        if not output:
+            return None
+        first = output.splitlines()[0].strip()
+        return int(first) if first.isdigit() else None
+
+    def _live_model_id(self) -> str | None:
+        url = f"http://{self.config.runtime.host}:{self.config.runtime.port}/v1/models"
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                payload = json.load(response)
+        except Exception:
+            return None
+        data = payload.get("data")
+        if not isinstance(data, list) or not data:
+            return None
+        first = data[0]
+        if not isinstance(first, dict):
+            return None
+        model_id = first.get("id")
+        if isinstance(model_id, str):
+            return model_id
+        return None
