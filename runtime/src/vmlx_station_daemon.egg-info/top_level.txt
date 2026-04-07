@@ -1,1 +1,0 @@
-vmlx_station_daemon
