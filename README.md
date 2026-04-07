@@ -209,6 +209,35 @@ It includes:
 - editable runtime settings for common `vmlx serve` options
 - editable day/night schedule
 
+The built-in chat panel is intentionally lightweight and best used as a smoke test.
+For a richer daily chat experience, use an external UI such as Open WebUI against the managed OpenAI-compatible endpoint.
+
+## Using Open WebUI for Chat
+
+`vMLX Station` works well as the runtime/control plane while `Open WebUI` handles the chat UX.
+
+- Open WebUI project: [open-webui/open-webui](https://github.com/open-webui/open-webui)
+- OpenAI-compatible provider guide: [Open WebUI docs](https://docs.openwebui.com/getting-started/quick-start/connect-a-provider/starting-with-openai-compatible/)
+
+Connection values:
+
+- URL: `http://127.0.0.1:18083/v1`
+- API Key: leave blank unless you configured one in `vmlx-station`
+
+This split keeps `vMLX Station` focused on:
+
+- model inventory
+- runtime tuning
+- schedule/load control
+- endpoint management
+
+while Open WebUI handles:
+
+- real chat sessions
+- conversation history
+- richer prompt UX
+- multi-chat navigation
+
 Note on context length:
 
 - the current `vmlx serve --help` output does not expose a dedicated `--context-length` or `--max-model-len` flag

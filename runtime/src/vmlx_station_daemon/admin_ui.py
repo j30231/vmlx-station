@@ -452,6 +452,63 @@ def render_admin_ui() -> str:
       document.getElementById("runtime-context-hint").textContent = contextHint;
     }
 
+    function normalizeRuntimeForm() {
+      const continuousBatching = document.getElementById("cfg-continuous-batching");
+      const prefixCache = document.getElementById("cfg-prefix-cache");
+      const pagedCache = document.getElementById("cfg-paged-cache");
+      const kvQuant = document.getElementById("cfg-kv-cache-quantization");
+      const maxNumSeqs = document.getElementById("cfg-max-num-seqs");
+      const streamFromDisk = document.getElementById("cfg-stream-from-disk");
+
+      let adjusted = [];
+
+      if (streamFromDisk.checked) {
+        if (maxNumSeqs.value !== "1") {
+          maxNumSeqs.value = "1";
+          adjusted.push("Set max concurrent seqs to 1 for stream-from-disk mode.");
+        }
+        if (continuousBatching.checked) {
+          continuousBatching.checked = false;
+          adjusted.push("Disabled continuous batching because stream-from-disk mode cannot use it.");
+        }
+        if (prefixCache.checked) {
+          prefixCache.checked = false;
+          adjusted.push("Disabled prefix cache because stream-from-disk mode cannot use it.");
+        }
+        if (pagedCache.checked) {
+          pagedCache.checked = false;
+          adjusted.push("Disabled paged cache because stream-from-disk mode cannot use it.");
+        }
+        if (kvQuant.value !== "none") {
+          kvQuant.value = "none";
+          adjusted.push("Disabled KV cache quantization because stream-from-disk mode cannot use it.");
+        }
+      }
+
+      if (kvQuant.value !== "none" && !continuousBatching.checked) {
+        continuousBatching.checked = true;
+        adjusted.push("Enabled continuous batching because KV cache quantization requires it.");
+      }
+
+      if (pagedCache.checked && !continuousBatching.checked) {
+        continuousBatching.checked = true;
+        adjusted.push("Enabled continuous batching because paged cache requires it.");
+      }
+
+      if (!continuousBatching.checked) {
+        if (kvQuant.value !== "none") {
+          kvQuant.value = "none";
+          adjusted.push("Reset KV cache quantization to none because continuous batching is off.");
+        }
+        if (pagedCache.checked) {
+          pagedCache.checked = false;
+          adjusted.push("Disabled paged cache because continuous batching is off.");
+        }
+      }
+
+      return adjusted;
+    }
+
     function renderConfigForm() {
       const config = state.config;
       if (!config) return;
@@ -502,6 +559,7 @@ def render_admin_ui() -> str:
     }
 
     async function saveConfig() {
+      const adjusted = normalizeRuntimeForm();
       const config = structuredClone(state.config);
       config.model_roots = document.getElementById("model-roots").value.split("\\n").map((v) => v.trim()).filter(Boolean);
       config.runtime.vmlx_bin = document.getElementById("vmlx-bin").value.trim();
@@ -525,6 +583,9 @@ def render_admin_ui() -> str:
         method: "PUT",
         body: JSON.stringify(config),
       });
+      if (adjusted.length) {
+        notice(adjusted.join(" "), false);
+      }
     }
 
     async function saveSchedule() {
@@ -596,6 +657,22 @@ def render_admin_ui() -> str:
         await refreshAll();
         notice("Runtime settings saved. They apply on next load or on Reload Current.");
       } catch (error) { notice(error.message, true); }
+    });
+    document.getElementById("cfg-kv-cache-quantization").addEventListener("change", () => {
+      const adjusted = normalizeRuntimeForm();
+      if (adjusted.length) notice(adjusted.join(" "), false);
+    });
+    document.getElementById("cfg-paged-cache").addEventListener("change", () => {
+      const adjusted = normalizeRuntimeForm();
+      if (adjusted.length) notice(adjusted.join(" "), false);
+    });
+    document.getElementById("cfg-stream-from-disk").addEventListener("change", () => {
+      const adjusted = normalizeRuntimeForm();
+      if (adjusted.length) notice(adjusted.join(" "), false);
+    });
+    document.getElementById("cfg-continuous-batching").addEventListener("change", () => {
+      const adjusted = normalizeRuntimeForm();
+      if (adjusted.length) notice(adjusted.join(" "), false);
     });
     document.getElementById("save-schedule-btn").addEventListener("click", async () => {
       try {
