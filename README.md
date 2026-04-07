@@ -21,6 +21,7 @@ It is designed to sit on top of [`vMLX`](https://github.com/jjang-ai/vmlx) and m
 - what is loaded right now?
 - what should load at 11 PM?
 - what endpoint should my local tools call?
+- can I test the loaded model without installing another UI?
 
 ## Architecture
 
@@ -39,9 +40,11 @@ The model API remains the standard OpenAI-compatible `vmlx` endpoint.
 - scan model roots for MLX and JANG-style models
 - load/unload a model through `vmlx serve`
 - expose local control endpoints on `127.0.0.1:18100`
+- expose a built-in admin/test UI on `http://127.0.0.1:18100/admin`
 - expose inference through the managed `vmlx` server on `127.0.0.1:18083`
 - menu bar item that shows current model and lists installed models
 - time-of-day schedules
+- editable runtime tuning for major `vmlx serve` knobs
 
 ## Supported model types
 
@@ -155,9 +158,13 @@ The daemon exposes a small local API:
 - `GET /health`
 - `GET /api/status`
 - `GET /api/models`
+- `GET /api/config`
 - `POST /api/load`
 - `POST /api/unload`
+- `POST /api/reload`
 - `POST /api/rescan`
+- `POST /api/chat-test`
+- `PUT /api/config`
 - `GET /api/schedule`
 - `PUT /api/schedule`
 
@@ -182,6 +189,28 @@ When a model is loaded, `vmlx serve` is managed separately and exposed at:
 ```text
 http://127.0.0.1:18083/v1
 ```
+
+## Built-in Admin UI
+
+Open this in a browser:
+
+```text
+http://127.0.0.1:18100/admin
+```
+
+It includes:
+
+- current runtime/model status
+- model inventory with load buttons
+- unload/rescan/reload actions
+- a built-in chat test panel
+- editable runtime settings for common `vmlx serve` options
+- editable day/night schedule
+
+Note on context length:
+
+- the current `vmlx serve --help` output does not expose a dedicated `--context-length` or `--max-model-len` flag
+- the practical knobs available today are `max_tokens`, cache memory, batching, paged cache, KV cache quantization, and disk-streaming settings
 
 ## Roadmap
 

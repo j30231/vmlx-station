@@ -38,6 +38,18 @@ class RuntimeConfig(BaseModel):
     vmlx_bin: str = "/Users/jaesik/.venvs/vmlx/bin/vmlx"
     api_key: Optional[str] = None
     default_enable_thinking: bool = False
+    max_tokens: int = 32768
+    max_num_seqs: int = 256
+    continuous_batching: bool = False
+    enable_prefix_cache: bool = True
+    cache_memory_percent: float = 0.30
+    use_paged_cache: bool = False
+    paged_cache_block_size: int = 64
+    max_cache_blocks: int = 1000
+    kv_cache_quantization: str = "none"
+    kv_cache_group_size: int = 64
+    stream_from_disk: bool = False
+    stream_memory_percent: int = 90
     extra_args: list[str] = Field(default_factory=list)
 
 
@@ -52,6 +64,13 @@ class LoadRequest(BaseModel):
     model_id: str
 
 
+class ChatTestRequest(BaseModel):
+    prompt: str
+    system_prompt: str = ""
+    max_tokens: int = 256
+    temperature: Optional[float] = None
+
+
 class RuntimeStatus(BaseModel):
     running: bool
     loaded_model_id: Optional[str] = None
@@ -64,4 +83,3 @@ class RuntimeStatus(BaseModel):
     schedule_enabled: bool
     active_schedule_rule: Optional[ScheduleRule] = None
     message: str
-

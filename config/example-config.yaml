@@ -12,6 +12,18 @@ runtime:
   vmlx_bin: /Users/jaesik/.venvs/vmlx/bin/vmlx
   api_key: null
   default_enable_thinking: false
+  max_tokens: 32768
+  max_num_seqs: 256
+  continuous_batching: false
+  enable_prefix_cache: true
+  cache_memory_percent: 0.30
+  use_paged_cache: false
+  paged_cache_block_size: 64
+  max_cache_blocks: 1000
+  kv_cache_quantization: none
+  kv_cache_group_size: 64
+  stream_from_disk: false
+  stream_memory_percent: 90
   extra_args: []
 
 schedule:
@@ -25,4 +37,3 @@ schedule:
       start: "23:00"
       end: "06:00"
       model_id: Gemma-4-31B-JANG_4M-CRACK
-

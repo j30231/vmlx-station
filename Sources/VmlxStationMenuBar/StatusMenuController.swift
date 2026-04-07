@@ -137,7 +137,9 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func openControlAPI() {
-        guard let urlString = currentStatus?.controlBaseURL, let url = URL(string: urlString) else { return }
+        guard let urlString = currentStatus?.controlBaseURL,
+              let baseURL = URL(string: urlString) else { return }
+        let url = baseURL.appendingPathComponent("admin")
         NSWorkspace.shared.open(url)
     }
 

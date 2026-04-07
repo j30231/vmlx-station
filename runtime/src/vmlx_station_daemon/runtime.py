@@ -50,7 +50,33 @@ class RuntimeManager:
             served_model_name,
             "--default-enable-thinking",
             str(self.config.runtime.default_enable_thinking).lower(),
+            "--max-tokens",
+            str(self.config.runtime.max_tokens),
+            "--max-num-seqs",
+            str(self.config.runtime.max_num_seqs),
+            "--cache-memory-percent",
+            str(self.config.runtime.cache_memory_percent),
+            "--paged-cache-block-size",
+            str(self.config.runtime.paged_cache_block_size),
+            "--max-cache-blocks",
+            str(self.config.runtime.max_cache_blocks),
+            "--kv-cache-quantization",
+            self.config.runtime.kv_cache_quantization,
+            "--kv-cache-group-size",
+            str(self.config.runtime.kv_cache_group_size),
+            "--stream-memory-percent",
+            str(self.config.runtime.stream_memory_percent),
         ]
+        if self.config.runtime.continuous_batching:
+            cmd.append("--continuous-batching")
+        if self.config.runtime.enable_prefix_cache:
+            cmd.append("--enable-prefix-cache")
+        else:
+            cmd.append("--disable-prefix-cache")
+        if self.config.runtime.use_paged_cache:
+            cmd.append("--use-paged-cache")
+        if self.config.runtime.stream_from_disk:
+            cmd.append("--stream-from-disk")
         if self.config.runtime.api_key:
             cmd.extend(["--api-key", self.config.runtime.api_key])
         cmd.extend(self.config.runtime.extra_args)
